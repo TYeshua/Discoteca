@@ -145,7 +145,7 @@ const playlistItems: MenuItem[] = [
 
 const GALLERY_PHOTO_COUNT = 21;
 const galleryImages = Array.from({ length: GALLERY_PHOTO_COUNT }, (_, i) => ({
-  src: `/L${i + 1}.jpeg`,
+  src: `${import.meta.env.BASE_URL}L${i + 1}.jpeg`,
   alt: `Foto ${i + 1}`,
 }));
 
