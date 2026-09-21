@@ -21,6 +21,13 @@ export interface CardSwapProps {
   pauseOnHover?: boolean;
   onCardClick?: (idx: number) => void;
   onActiveChange?: (idx: number) => void;
+  /**
+   * Controlled mode: when set, the stack never auto-swaps on a timer —
+   * it only reorders to bring this original child index to the front,
+   * whenever the value changes. Pass -1 (or leave unset) for "no active
+   * card yet".
+   */
+  activeIndex?: number;
   skewAmount?: number;
   easing?: 'linear' | 'elastic';
   children: ReactNode;
@@ -76,10 +83,12 @@ const CardSwap: React.FC<CardSwapProps> = ({
   pauseOnHover = false,
   onCardClick,
   onActiveChange,
+  activeIndex,
   skewAmount = 6,
   easing = 'elastic',
   children,
 }) => {
+  const isControlled = activeIndex !== undefined;
   const config =
     easing === 'elastic'
       ? {
@@ -117,6 +126,8 @@ const CardSwap: React.FC<CardSwapProps> = ({
     const total = refs.length;
     refs.forEach((r, i) => placeNow(r.current!, makeSlot(i, cardDistance, verticalDistance, total), skewAmount));
     onActiveChangeRef.current?.(order.current[0]);
+
+    if (isControlled) return; // an active-index effect drives reordering instead of a timer
 
     const swap = () => {
       if (order.current.length < 2) return;
@@ -200,6 +211,28 @@ const CardSwap: React.FC<CardSwapProps> = ({
     }
     return () => clearInterval(intervalRef.current);
   }, [cardDistance, verticalDistance, delay, pauseOnHover, skewAmount, easing]);
+
+  /* Controlled mode — reorder only when the active card actually changes */
+  useEffect(() => {
+    if (!isControlled || activeIndex === undefined || activeIndex < 0) return;
+    const pos = order.current.indexOf(activeIndex);
+    if (pos <= 0) return; // already at the front, or unknown index
+
+    const newOrder = [...order.current.slice(pos), ...order.current.slice(0, pos)];
+    const tl = gsap.timeline();
+    tlRef.current = tl;
+
+    newOrder.forEach((idx, i) => {
+      const el = refs[idx]?.current;
+      if (!el) return;
+      const slot = makeSlot(i, cardDistance, verticalDistance, refs.length);
+      gsap.set(el, { zIndex: slot.zIndex });
+      tl.to(el, { x: slot.x, y: slot.y, z: slot.z, duration: config.durMove, ease: config.ease }, 0);
+    });
+
+    order.current = newOrder;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex]);
 
   const rendered = childArr.map((child, i) =>
     isValidElement<CardProps>(child)

@@ -219,8 +219,9 @@ export default function App() {
     : 'loading';
 
   const currentTrack = spotify.tracks.find(tr => tr.uri === spotify.currentTrackUri) ?? null;
+  const activeDiscIndex = currentTrack ? spotify.tracks.indexOf(currentTrack) : -1;
   const nowPlaying = currentTrack && { image: currentTrack.image, title: currentTrack.name, description: currentTrack.artist };
-  const nowPlayingCode = currentTrack ? getSelectionCode(spotify.tracks.indexOf(currentTrack)) : null;
+  const nowPlayingCode = currentTrack ? getSelectionCode(activeDiscIndex) : null;
   const nowIsPlaying = spotify.isPlaying;
   const playDisabled = spotify.tracks.length === 0;
   const discTracks = spotify.tracks.map(tr => ({ image: tr.image, title: tr.name, description: tr.artist }));
@@ -504,16 +505,15 @@ export default function App() {
               </span>
             </div>
 
-            {/* Record changer — a stack de vinis que troca sozinha como um jukebox de verdade */}
+            {/* Record changer — troca o disco da frente só quando a música tocando muda de verdade */}
             <div className="relative z-10" style={{ height: '329px' }}>
               <CardSwap
                 width={148}
                 height={148}
                 cardDistance={16}
                 verticalDistance={13}
-                delay={4500}
                 skewAmount={4}
-                pauseOnHover={false}
+                activeIndex={activeDiscIndex}
                 onCardClick={spotify.playTrackAt}
               >
                 {discTracks.map((song, i) => (
