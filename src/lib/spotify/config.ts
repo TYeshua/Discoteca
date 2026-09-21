@@ -8,10 +8,10 @@
  * No dashboard do Spotify, em "Redirect URIs", cadastre exatamente a URL onde
  * este site vai rodar (ex: https://seuusuario.github.io/discoteca/).
  */
-export const SPOTIFY_CLIENT_ID = '';
+export const SPOTIFY_CLIENT_ID = 'cef46d7add1d46b897dc0693f52eade1';
 
 /** ID da playlist (a parte depois de /playlist/ na URL do Spotify). */
-export const SPOTIFY_PLAYLIST_ID = '';
+export const SPOTIFY_PLAYLIST_ID = '5uodt6Yyd77Tu4dFuWc72F';
 
 export const SPOTIFY_SCOPES = [
   'streaming',
