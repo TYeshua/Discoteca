@@ -20,12 +20,12 @@ interface SpotifyApiTrack {
   uri: string;
   id: string;
   name: string;
-  artists: SpotifyArtist[];
-  album: { images: SpotifyImage[] };
+  artists?: SpotifyArtist[];
+  album?: { images: SpotifyImage[] };
 }
 
-interface SpotifyPlaylistTracksResponse {
-  items: { track: SpotifyApiTrack | null }[];
+interface SpotifyPlaylistItemsResponse {
+  items: { item: SpotifyApiTrack | null }[];
 }
 
 interface SpotifyErrorBody {
@@ -43,22 +43,23 @@ async function describeError(res: Response): Promise<string> {
 }
 
 export async function fetchPlaylistTracks(accessToken: string): Promise<SpotifyTrack[]> {
-  const fields = encodeURIComponent('items(track(uri,id,name,artists(name),album(images)))');
+  const fields = encodeURIComponent('items(item(uri,id,name,artists(name),album(images)))');
   const res = await fetch(
-    `${SPOTIFY_API_BASE}/playlists/${SPOTIFY_PLAYLIST_ID}/tracks?fields=${fields}&limit=50`,
+    `${SPOTIFY_API_BASE}/playlists/${SPOTIFY_PLAYLIST_ID}/items?fields=${fields}&limit=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!res.ok) throw new Error(`Falha ao buscar as faixas da playlist do Spotify (${await describeError(res)}).`);
-  const data = (await res.json()) as SpotifyPlaylistTracksResponse;
+  const data = (await res.json()) as SpotifyPlaylistItemsResponse;
   return data.items
-    .map(item => item.track)
-    .filter((track): track is SpotifyApiTrack => track !== null)
+    .map(entry => entry.item)
+    // só músicas — episódios de podcast não têm artistas/álbum no mesmo formato
+    .filter((track): track is SpotifyApiTrack => !!track && !!track.artists && !!track.album)
     .map(track => ({
       uri: track.uri,
       id: track.id,
       name: track.name,
-      artist: track.artists.map(a => a.name).join(', '),
-      image: track.album.images[0]?.url ?? '',
+      artist: track.artists!.map(a => a.name).join(', '),
+      image: track.album!.images[0]?.url ?? '',
     }));
 }
 
