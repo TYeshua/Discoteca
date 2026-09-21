@@ -24,6 +24,8 @@ declare global {
   interface SpotifyPlayer {
     connect(): Promise<boolean>;
     disconnect(): void;
+    /** Must be called synchronously inside a user gesture (click/tap) to unlock audio playback in the browser. */
+    activateElement(): Promise<void>;
     togglePlay(): Promise<void>;
     pause(): Promise<void>;
     resume(): Promise<void>;

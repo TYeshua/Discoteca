@@ -144,6 +144,10 @@ export function useSpotifyPlayback(): SpotifyPlayback {
   }, []);
 
   const playTrackAt = useCallback((index: number) => {
+    // Must run synchronously inside the click that triggered this call —
+    // it's what unlocks audio output in the browser for the SDK's player.
+    playerRef.current?.activateElement();
+
     const track = tracksRef.current[index];
     const deviceId = deviceIdRef.current;
     if (!track || !deviceId) return;
@@ -156,14 +160,17 @@ export function useSpotifyPlayback(): SpotifyPlayback {
   }, []);
 
   const togglePlay = useCallback(() => {
+    playerRef.current?.activateElement();
     playerRef.current?.togglePlay();
   }, []);
 
   const next = useCallback(() => {
+    playerRef.current?.activateElement();
     playerRef.current?.nextTrack();
   }, []);
 
   const previous = useCallback(() => {
+    playerRef.current?.activateElement();
     playerRef.current?.previousTrack();
   }, []);
 
