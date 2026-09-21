@@ -38,6 +38,7 @@ export function useSpotifyPlayback(): SpotifyPlayback {
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const tracksRef = useRef<SpotifyTrack[]>([]);
+  const activeUriRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isSpotifyConfigured()) {
@@ -108,7 +109,8 @@ export function useSpotifyPlayback(): SpotifyPlayback {
       player.addListener('player_state_changed', state => {
         if (cancelled || !state) return;
         setIsPlaying(!state.paused);
-        setCurrentTrackUri(state.track_window.current_track.uri);
+        activeUriRef.current = state.track_window.current_track.uri;
+        setCurrentTrackUri(activeUriRef.current);
       });
 
       player.addListener('initialization_error', ({ message }) => {
@@ -161,18 +163,32 @@ export function useSpotifyPlayback(): SpotifyPlayback {
 
   const togglePlay = useCallback(() => {
     playerRef.current?.activateElement();
+    // Nothing has ever been loaded onto this device yet — togglePlay() has
+    // no track/context to resume, so kick off playback from the first disc.
+    if (activeUriRef.current === null) {
+      playTrackAt(0);
+      return;
+    }
     playerRef.current?.togglePlay();
-  }, []);
+  }, [playTrackAt]);
 
   const next = useCallback(() => {
     playerRef.current?.activateElement();
+    if (activeUriRef.current === null) {
+      playTrackAt(0);
+      return;
+    }
     playerRef.current?.nextTrack();
-  }, []);
+  }, [playTrackAt]);
 
   const previous = useCallback(() => {
     playerRef.current?.activateElement();
+    if (activeUriRef.current === null) {
+      playTrackAt(0);
+      return;
+    }
     playerRef.current?.previousTrack();
-  }, []);
+  }, [playTrackAt]);
 
   const setVolume = useCallback((v: number) => {
     playerRef.current?.setVolume(v);
