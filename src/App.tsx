@@ -339,9 +339,11 @@ export default function App() {
                   <p style={{ fontSize: '13px', color: t.warningP, margin: 0, lineHeight: 1.5 }}>
                     Não foi possível ativar o Spotify neste navegador{spotify.errorMessage ? `: ${spotify.errorMessage}` : '.'}
                   </p>
-                  <p style={{ fontSize: '11px', color: t.textSoft, margin: 0 }}>
-                    É necessário Spotify Premium para tocar no navegador.
-                  </p>
+                  {!spotify.errorMessage?.includes('faixas da playlist') && (
+                    <p style={{ fontSize: '11px', color: t.textSoft, margin: 0 }}>
+                      É necessário Spotify Premium para tocar no navegador.
+                    </p>
+                  )}
                   <button
                     onClick={() => window.location.reload()}
                     style={{

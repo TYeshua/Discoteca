@@ -28,13 +28,27 @@ interface SpotifyPlaylistTracksResponse {
   items: { track: SpotifyApiTrack | null }[];
 }
 
+interface SpotifyErrorBody {
+  error?: { status?: number; message?: string };
+}
+
+async function describeError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as SpotifyErrorBody;
+    if (body.error?.message) return `${res.status} ${body.error.message}`;
+  } catch {
+    // resposta sem corpo JSON — segue com o status cru
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
 export async function fetchPlaylistTracks(accessToken: string): Promise<SpotifyTrack[]> {
   const fields = encodeURIComponent('items(track(uri,id,name,artists(name),album(images)))');
   const res = await fetch(
     `${SPOTIFY_API_BASE}/playlists/${SPOTIFY_PLAYLIST_ID}/tracks?fields=${fields}&limit=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  if (!res.ok) throw new Error('Falha ao buscar as faixas da playlist do Spotify.');
+  if (!res.ok) throw new Error(`Falha ao buscar as faixas da playlist do Spotify (${await describeError(res)}).`);
   const data = (await res.json()) as SpotifyPlaylistTracksResponse;
   return data.items
     .map(item => item.track)
@@ -61,5 +75,5 @@ export async function playTrackOnDevice(accessToken: string, deviceId: string, t
       offset: { uri: trackUri },
     }),
   });
-  if (!res.ok && res.status !== 204) throw new Error('Falha ao iniciar a reprodução no Spotify.');
+  if (!res.ok && res.status !== 204) throw new Error(`Falha ao iniciar a reprodução no Spotify (${await describeError(res)}).`);
 }
