@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Play, Pause, Volume2, SkipBack, SkipForward, Music, Sun, Moon } from 'lucide-react';
 import DomeGallery from './components/DomeGallery';
 import CardSwap, { Card } from './components/CardSwap';
 import GradientWaves from './components/GradientWaves';
-import { type MenuItem, getSelectionCode } from './lib/jukebox';
+import { getSelectionCode } from './lib/jukebox';
 import { useSpotifyPlayback } from './lib/spotify/useSpotifyPlayback';
 
 /* ═══════════════════════════════════════════════
@@ -134,106 +134,243 @@ const THEMES = {
   },
 } as const;
 
-/* ─── Playlist ─── */
-const playlistItems: MenuItem[] = [
-  { image: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop', link: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', title: 'Synthwave Night',  description: 'Neon Track'       },
-  { image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600&auto=format&fit=crop', link: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', title: 'Acoustic Vibes',  description: 'Guitar Session'   },
-  { image: 'https://images.unsplash.com/photo-1598385396964-6f8b8b8b8b8b?q=80&w=600&auto=format&fit=crop', link: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', title: 'Deep House',      description: 'Late Night Groove' },
-  { image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?q=80&w=600&auto=format&fit=crop', link: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', title: 'Ambient Drift',   description: 'Floating'          },
-  { image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600&auto=format&fit=crop', link: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', title: 'Retro Wave',      description: '80s Dream'         },
-];
+type ThemeTokens = { [K in keyof typeof THEMES.sunset]: string };
 
 const GALLERY_PHOTO_COUNT = 21;
 const galleryImages = Array.from({ length: GALLERY_PHOTO_COUNT }, (_, i) => ({
   src: `${import.meta.env.BASE_URL}L${i + 1}.jpeg`,
   alt: `Foto ${i + 1}`,
 }));
+const galleryImageSrcs = galleryImages.map(img => img.src);
+
+/** Resolves once every gallery photo has loaded (or after a timeout, so one slow/broken image can't stall the app forever). */
+function useImagesPreloaded(srcs: string[], timeoutMs = 6000): boolean {
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (srcs.length === 0) {
+      setLoaded(true);
+      return;
+    }
+    let remaining = srcs.length;
+    let settled = false;
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        setLoaded(true);
+      }
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    srcs.forEach(src => {
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          window.clearTimeout(timer);
+          finish();
+        }
+      };
+      img.src = src;
+    });
+    return () => {
+      window.clearTimeout(timer);
+      settled = true;
+    };
+  }, [srcs, timeoutMs]);
+
+  return loaded;
+}
+
+function VinylSpinner({ t, spinning = true, size = 84 }: { t: ThemeTokens; spinning?: boolean; size?: number }) {
+  return (
+    <div
+      className={spinning ? 'animate-spin' : ''}
+      style={{
+        width: size, height: size, borderRadius: '50%', position: 'relative', animationDuration: '2.2s',
+        background: `repeating-radial-gradient(circle at center, ${t.discBody} 0px, ${t.discBody} 2px, ${t.discGroove} 3px, ${t.discBody} 4px)`,
+        boxShadow: `0 0 0 1.5px ${t.discRingA}88, 0 10px 26px rgba(0,0,0,0.45)`,
+      }}
+    >
+      <div
+        className="absolute rounded-full"
+        style={{ top: '50%', left: '50%', width: '10%', height: '10%', background: t.discHole, transform: 'translate(-50%, -50%)' }}
+      />
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════ */
 
 export default function App() {
-  const [theme,      setTheme]      = useState<Theme>('sunset');
-  const [activeSong, setActiveSong] = useState<MenuItem | null>(null);
-  const [isPlaying,  setIsPlaying]  = useState(false);
-  const [volume,     setVolume]     = useState(0.7);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [theme,  setTheme]  = useState<Theme>('sunset');
+  const [volume, setVolume] = useState(0.7);
 
   const t = THEMES[theme];
   const isSunset = theme === 'sunset';
 
   const spotify = useSpotifyPlayback();
-  const isSpotifyReady = spotify.status === 'ready' && spotify.tracks.length > 0;
+  const imagesLoaded = useImagesPreloaded(galleryImageSrcs);
 
-  const handleActiveIndexChange = useCallback(
-    (i: number) => setActiveSong(playlistItems[i] ?? null),
-    []
-  );
+  const phase: 'connect' | 'loading' | 'error' | 'unconfigured' | 'app' =
+    spotify.status === 'unconfigured' ? 'unconfigured'
+    : spotify.status === 'logged_out' ? 'connect'
+    : spotify.status === 'unavailable' ? 'error'
+    : spotify.status === 'ready' && imagesLoaded ? 'app'
+    : 'loading';
 
-  const handleNext = useCallback(() => {
-    setActiveSong(prev => {
-      const idx = prev ? playlistItems.indexOf(prev) : -1;
-      return playlistItems[(idx + 1) % playlistItems.length];
-    });
-  }, []);
-
-  const handlePrev = useCallback(() => {
-    setActiveSong(prev => {
-      const idx = prev ? playlistItems.indexOf(prev) : -1;
-      return playlistItems[idx <= 0 ? playlistItems.length - 1 : idx - 1];
-    });
-  }, []);
-
-  useEffect(() => {
-    if (isSpotifyReady) return; // playback comes from the Spotify SDK instead
-    if (audioRef.current && activeSong) {
-      audioRef.current.src    = activeSong.link;
-      audioRef.current.volume = volume;
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-    }
-  }, [activeSong, volume, isSpotifyReady]);
-
-  const togglePlay = () => {
-    if (isSpotifyReady) { spotify.togglePlay(); return; }
-    if (!audioRef.current || !activeSong) return;
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else           { audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {}); }
-  };
+  const currentTrack = spotify.tracks.find(tr => tr.uri === spotify.currentTrackUri) ?? null;
+  const nowPlaying = currentTrack && { image: currentTrack.image, title: currentTrack.name, description: currentTrack.artist };
+  const nowPlayingCode = currentTrack ? getSelectionCode(spotify.tracks.indexOf(currentTrack)) : null;
+  const nowIsPlaying = spotify.isPlaying;
+  const playDisabled = spotify.tracks.length === 0;
+  const discTracks = spotify.tracks.map(tr => ({ image: tr.image, title: tr.name, description: tr.artist }));
 
   const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
     setVolume(v);
-    if (isSpotifyReady) spotify.setVolume(v);
-    else if (audioRef.current) audioRef.current.volume = v;
+    spotify.setVolume(v);
   };
-
-  /* Discos exibidos no jukebox: playlist do Spotify quando conectada, senão a demo local */
-  const discTracks = isSpotifyReady
-    ? spotify.tracks.map(tr => ({ image: tr.image, title: tr.name, description: tr.artist }))
-    : playlistItems.map(tr => ({ image: tr.image, title: tr.title, description: tr.description }));
-
-  const spotifyCurrentTrack = isSpotifyReady
-    ? spotify.tracks.find(tr => tr.uri === spotify.currentTrackUri) ?? null
-    : null;
-
-  const nowPlaying = isSpotifyReady
-    ? (spotifyCurrentTrack && { image: spotifyCurrentTrack.image, title: spotifyCurrentTrack.name, description: spotifyCurrentTrack.artist })
-    : (activeSong && { image: activeSong.image, title: activeSong.title, description: activeSong.description });
-
-  const nowPlayingCode = isSpotifyReady
-    ? (spotifyCurrentTrack ? getSelectionCode(spotify.tracks.indexOf(spotifyCurrentTrack)) : null)
-    : (activeSong ? getSelectionCode(playlistItems.indexOf(activeSong)) : null);
-
-  const nowIsPlaying = isSpotifyReady ? spotify.isPlaying : isPlaying;
-  const playDisabled = isSpotifyReady ? spotify.tracks.length === 0 : !activeSong;
-
-  const handleCardClick = isSpotifyReady ? spotify.playTrackAt : handleActiveIndexChange;
-  const handleCardAutoSwap = isSpotifyReady ? undefined : handleActiveIndexChange;
 
   /* inject range track color dynamically */
   const rangeStyle = `
     input[type="range"] { background: ${t.rangeTrack}; }
     input[type="range"]::-webkit-slider-thumb { background: ${t.thumbColor}; box-shadow: 0 0 6px ${t.thumbColor}88; }
   `;
+
+  const themeToggle = (left: string) => (
+    <div className="absolute top-2 z-30" style={{ left, transform: 'translateX(-50%)' }}>
+      <button
+        onClick={() => setTheme(isSunset ? 'moonlit' : 'sunset')}
+        className="theme-toggle"
+        aria-label={isSunset ? 'Mudar para tema luar' : 'Mudar para tema pôr do sol'}
+        style={{
+          background:   isSunset ? 'rgba(255,200,120,0.22)' : 'rgba(20,60,130,0.30)',
+          borderColor:  isSunset ? 'rgba(255,170,80,0.45)'  : 'rgba(80,140,210,0.40)',
+          color:        isSunset ? 'rgba(80,25,0,0.85)'      : 'rgba(180,215,248,0.85)',
+          fontFamily: "'Bricolage Grotesque', sans-serif",
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        }}
+      >
+        {isSunset
+          ? <><Sun  size={11} strokeWidth={2} /> <span>Pôr do sol</span></>
+          : <><Moon size={11} strokeWidth={2} /> <span>Luar</span></>
+        }
+      </button>
+    </div>
+  );
+
+  const orientationWarning = (
+    <div className="orientation-warning" style={{ background: t.warningBg }}>
+      <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke={t.warningIcon} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" />
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+        <h2 style={{ margin: 0, fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '18px', fontWeight: 700, color: t.warningH2 }}>Gire o celular</h2>
+        <p  style={{ margin: 0, fontSize: '13px', color: t.warningP, maxWidth: '240px', textAlign: 'center' }}>
+          Esta experiência foi feita para o modo paisagem. Vire seu iPhone na horizontal.
+        </p>
+      </div>
+    </div>
+  );
+
+  /* ── Telas de conectar / carregando / erro — antes do app principal ── */
+  if (phase !== 'app') {
+    return (
+      <>
+        <div
+          className="relative overflow-hidden"
+          style={{ width: '852px', height: '393px', transition: 'background 0.8s ease', background: isSunset ? '#3d1500' : '#060c1e' }}
+        >
+          <div className="absolute inset-0 z-0">
+            <GradientWaves
+              horizonColor={t.horizonColor} waveColor={t.waveColor} crestColor={t.crestColor}
+              speed={0.25} amplitude={4.5} waveScale={0.45} waveRatio={0.75} swell={60} turbulence={30}
+              tilt={0.78} zoom={0.7} height={1.8} fogDepth={18} detail="high"
+              brightness={isSunset ? 1.1 : 0.95} opacity={1} mouseInteraction parallaxStrength={0.5}
+              grain grainIntensity={isSunset ? 0.04 : 0.03}
+            />
+          </div>
+          <div
+            className="absolute inset-0 z-[5] pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.28) 100%)' }}
+          />
+
+          <div className="relative z-10 flex items-center justify-center w-full h-full" style={{ padding: '0 48px' }}>
+            <div className="flex flex-col items-center gap-4" style={{ maxWidth: '380px', textAlign: 'center' }}>
+              {phase === 'connect' && (
+                <>
+                  <VinylSpinner t={t} spinning={false} />
+                  <h1 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '20px', fontWeight: 800, color: t.textPrimary, margin: 0 }}>
+                    Discoteca
+                  </h1>
+                  <p style={{ fontSize: '13px', color: t.textSoft, lineHeight: 1.5, margin: 0 }}>
+                    Conecte sua conta do Spotify para tocar sua playlist nos discos do jukebox.
+                  </p>
+                  <button
+                    onClick={spotify.login}
+                    style={{
+                      fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '13px', fontWeight: 700,
+                      color: '#fff', background: t.btnGradient, border: 'none', borderRadius: '999px',
+                      padding: '10px 22px', cursor: 'pointer', boxShadow: t.btnShadow,
+                    }}
+                  >
+                    Conectar Spotify
+                  </button>
+                </>
+              )}
+
+              {phase === 'loading' && (
+                <>
+                  <VinylSpinner t={t} spinning />
+                  <span
+                    style={{
+                      fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '11px', fontWeight: 700,
+                      letterSpacing: '0.2em', textTransform: 'uppercase', color: t.label,
+                    }}
+                  >
+                    Carregando…
+                  </span>
+                </>
+              )}
+
+              {phase === 'error' && (
+                <>
+                  <p style={{ fontSize: '13px', color: t.warningP, margin: 0, lineHeight: 1.5 }}>
+                    Não foi possível ativar o Spotify neste navegador{spotify.errorMessage ? `: ${spotify.errorMessage}` : '.'}
+                  </p>
+                  <p style={{ fontSize: '11px', color: t.textSoft, margin: 0 }}>
+                    É necessário Spotify Premium para tocar no navegador.
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    style={{
+                      fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '13px', fontWeight: 700,
+                      color: '#fff', background: t.btnGradient, border: 'none', borderRadius: '999px',
+                      padding: '10px 22px', cursor: 'pointer', boxShadow: t.btnShadow,
+                    }}
+                  >
+                    Tentar novamente
+                  </button>
+                </>
+              )}
+
+              {phase === 'unconfigured' && (
+                <p style={{ fontSize: '13px', color: t.textSoft, margin: 0, lineHeight: 1.5 }}>
+                  Configure <code>SPOTIFY_CLIENT_ID</code> e <code>SPOTIFY_PLAYLIST_ID</code> em{' '}
+                  <code>src/lib/spotify/config.ts</code>.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {themeToggle('50%')}
+        </div>
+
+        {orientationWarning}
+      </>
+    );
+  }
 
   return (
     <>
@@ -365,23 +502,6 @@ export default function App() {
               </span>
             </div>
 
-            {/* Conectar Spotify — só aparece quando configurado e ainda sem login neste dispositivo */}
-            {spotify.status === 'logged_out' && (
-              <button
-                onClick={spotify.login}
-                className="absolute top-7 right-3 z-20"
-                style={{
-                  fontFamily: "'Bricolage Grotesque', sans-serif",
-                  fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em',
-                  color: t.accent, background: t.playerGlass, border: `1px solid ${t.playerBorder}`,
-                  padding: '3px 8px', borderRadius: '999px', cursor: 'pointer',
-                  backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-                }}
-              >
-                Conectar Spotify
-              </button>
-            )}
-
             {/* Record changer — a stack de vinis que troca sozinha como um jukebox de verdade */}
             <div className="relative z-10" style={{ height: '329px' }}>
               <CardSwap
@@ -392,8 +512,7 @@ export default function App() {
                 delay={4500}
                 skewAmount={4}
                 pauseOnHover={false}
-                onActiveChange={handleCardAutoSwap}
-                onCardClick={handleCardClick}
+                onCardClick={spotify.playTrackAt}
               >
                 {discTracks.map((song, i) => (
                   <Card key={song.title + i} style={{ borderRadius: '50%', border: 'none', background: 'transparent' }}>
@@ -513,7 +632,7 @@ export default function App() {
 
                 {/* Anterior — 30×30 */}
                 <button
-                  onClick={isSpotifyReady ? spotify.previous : handlePrev}
+                  onClick={spotify.previous}
                   disabled={playDisabled}
                   aria-label="Faixa anterior"
                   style={{
@@ -530,7 +649,7 @@ export default function App() {
 
                 {/* Play/Pause — 44×44 */}
                 <button
-                  onClick={togglePlay}
+                  onClick={spotify.togglePlay}
                   disabled={playDisabled}
                   aria-label={nowIsPlaying ? 'Pausar' : 'Tocar'}
                   style={{
@@ -549,7 +668,7 @@ export default function App() {
 
                 {/* Próxima — 30×30 */}
                 <button
-                  onClick={isSpotifyReady ? spotify.next : handleNext}
+                  onClick={spotify.next}
                   disabled={playDisabled}
                   aria-label="Próxima faixa"
                   style={{
@@ -584,46 +703,10 @@ export default function App() {
           />
         </div>
 
-        {/* ── THEME TOGGLE — sobre o divisor em 511px ── */}
-        <div
-          className="absolute top-2 z-30"
-          style={{ left: '511px', transform: 'translateX(-50%)' }}
-        >
-          <button
-            onClick={() => setTheme(isSunset ? 'moonlit' : 'sunset')}
-            className="theme-toggle"
-            aria-label={isSunset ? 'Mudar para tema luar' : 'Mudar para tema pôr do sol'}
-            style={{
-              background:   isSunset ? 'rgba(255,200,120,0.22)' : 'rgba(20,60,130,0.30)',
-              borderColor:  isSunset ? 'rgba(255,170,80,0.45)'  : 'rgba(80,140,210,0.40)',
-              color:        isSunset ? 'rgba(80,25,0,0.85)'      : 'rgba(180,215,248,0.85)',
-              fontFamily: "'Bricolage Grotesque', sans-serif",
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-            }}
-          >
-            {isSunset
-              ? <><Sun  size={11} strokeWidth={2} /> <span>Pôr do sol</span></>
-              : <><Moon size={11} strokeWidth={2} /> <span>Luar</span></>
-            }
-          </button>
-        </div>
-
-        <audio ref={audioRef} onEnded={handleNext} />
+        {themeToggle('511px')}
       </div>
 
-      {/* ── Portrait warning ── */}
-      <div className="orientation-warning" style={{ background: t.warningBg }}>
-        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke={t.warningIcon} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" />
-        </svg>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-          <h2 style={{ margin: 0, fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: '18px', fontWeight: 700, color: t.warningH2 }}>Gire o celular</h2>
-          <p  style={{ margin: 0, fontSize: '13px', color: t.warningP, maxWidth: '240px', textAlign: 'center' }}>
-            Esta experiência foi feita para o modo paisagem. Vire seu iPhone na horizontal.
-          </p>
-        </div>
-      </div>
+      {orientationWarning}
     </>
   );
 }
