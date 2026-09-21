@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!--
+      iPhone 15 Pro landscape viewport:
+        logical px  → 852 × 393
+        device px   → 2556 × 1179  (3× DPR)
+        safe-area   → left ~59 px (Dynamic Island side), right ~21 px
+    -->
+    <meta
+      name="viewport"
+      content="width=852, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- iOS web-app settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <title>Discoteca</title>
+    <meta name="description" content="Crystal Dome · Vinyl Jukebox — experiência musical interativa" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
