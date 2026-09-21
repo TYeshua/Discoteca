@@ -11,7 +11,7 @@
 export const SPOTIFY_CLIENT_ID = 'cef46d7add1d46b897dc0693f52eade1';
 
 /** ID da playlist (a parte depois de /playlist/ na URL do Spotify). */
-export const SPOTIFY_PLAYLIST_ID = '5uodt6Yyd77Tu4dFuWc72F';
+export const SPOTIFY_PLAYLIST_ID = '11DkvjTJJslXIuGe5xTbJx';
 
 export const SPOTIFY_SCOPES = [
   'streaming',
